@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<memo:Message xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:memo="https://DigitalPost.dk/MeMo-1" memoVersion="1.2" xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
+	<memo:MessageHeader>
+		<memo:messageType>DIGITALPOST</memo:messageType>
+		<memo:messageUUID>8C2EA15D-61FB-4BA9-9366-42F8B194C114</memo:messageUUID>
+		<memo:label>Pladsanvisning</memo:label>
+		<memo:Sender>
+			<memo:senderID>12345678</memo:senderID>
+			<memo:idType>CVR</memo:idType>
+			<memo:label>Kommunen</memo:label>
+		</memo:Sender>
+		<memo:Recipient>
+			<memo:recipientID>2211771212</memo:recipientID>
+			<memo:idType>CPR</memo:idType>
+		</memo:Recipient>
+	</memo:MessageHeader>
+	<memo:MessageBody>
+		<memo:createdDateTime>2024-05-03T12:00:00Z</memo:createdDateTime>
+		<memo:MainDocument>
+			<memo:File>
+				<memo:encodingFormat>application/pdf</memo:encodingFormat>
+				<memo:filename>Pladsanvisning.pdf</memo:filename>
+				<memo:language>da</memo:language>
+				<memo:content>VGhpcyBpcyBhIHRlc3Q=</memo:content>
+			</memo:File>
+		</memo:MainDocument>
+	</memo:MessageBody>
+</memo:Message>

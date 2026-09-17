@@ -1,22 +1,42 @@
 [project]
-name = "q-skabelon-object"
-version = "0.1.0"
-description = "object skabelon"
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "automation-server-client",
-    "q-haderslev-vbo",
-    "requests>=2.31.0",
+name = "q-serviceplatformen"
+version = "3.2.0"
+
+authors = [
+    { name = "ITK Development", email = "itk-rpa@mkb.aarhus.dk" },
 ]
 
-[tool.uv.sources]
-automation-server-client = { git = "https://github.com/odense-rpa/automation-server-client.git", tag = "v0.3.0" }
-q-haderslev-vbo = { git = "https://github.com/haderslev-rpa/q-haderslev-vbo.git", branch = "main" }
+maintainers = [
+    { name = "Haderslev Kommune" },
+]
+
+description = "Python modules for easier use of Kombit's Serviceplatformen."
+readme = "README.md"
+requires-python = ">=3.13"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+    "requests==2.*",
+    "cryptography",
+    "xmlschema",
+    "pika==1.3.*",
+    "xsdata",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "flake8",
+    "pylint",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["q_skabelon_object"] #Husk det "ikke" skal være bindestreg
+packages = ["q_serviceplatformen"]
