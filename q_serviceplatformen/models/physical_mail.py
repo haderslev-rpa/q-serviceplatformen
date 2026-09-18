@@ -1761,43 +1761,275 @@ class KombiRequest:
 
 
 def create_physical_mail(
+    *,
     forsendelse_type_identifikator: int,
     file_content: bytes,
+    recipient_name: str,
+    street_name: str,
+    house_number: str,
+    post_code: str,
+    city: str,
+    floor: str | None = None,
+    door: str | None = None,
     file_format: str = "pdf",
     country_code: str = "DK",
+    afsendelse_identifikator: str | None = None,
 ) -> ForsendelseI:
-    """Create a simple ForsendelseI object with a letter file.
-    The letter file is expected to have a correct receiver address
-    readable from a standard windowed envelope.
-    Note: In accordance to the documentation recipient CPR is hardcoded to '0000000000'.
-
-    Args:
-        forsendelse_type_identifikator: A special code that is handed out by the mail provider.
-        file_content: The raw bytes of the letter file to send. Will be base64 encoded.
-        file_format: The file format of the letter content. Defaults to "pdf".
-        country_code: The ISO 3166-1 alpha-2 country code of the recipient's address. Defaults to "DK".
-
-    Returns:
-        A ForsendelseI object populated with the given recipient and letter, ready to be sent.
     """
-    return ForsendelseI(
-        afsendelse_identifikator=AfsendelseIdentifikator(value=str(uuid.uuid4())),
-        forsendelse_type_identifikator=ForsendelseTypeIdentifikator(value=forsendelse_type_identifikator),
-        forsendelse_modtager=ForsendelseModtager(
-            afsendelse_modtager=AfsendelseModtager(
-                cpr_nummer_identifikator=CPRnummerIdentifikator(value="0000000000")
-            ),
-            modtager_adresse=ModtagerAdresse(
-                country_identification_code=CountryIdentificationCode(
-                    value=country_code,
-                    scheme=CountryIdentificationSchemeType.ISO3166_ALPHA2
-                )
+    Opretter en fysisk postforsendelse med struktureret adresse.
+
+    Input:
+        forsendelse_type_identifikator:
+            ForsendelseTypeIdentifikator fra fjernprintleverandøren.
+
+        file_content:
+            PDF-filens binære indhold.
+
+        recipient_name:
+            Modtagerens fulde navn.
+
+        street_name:
+            Modtagerens vejnavn uden husnummer.
+
+        house_number:
+            Husnummer med eventuelt bogstav, eksempelvis "12A".
+
+        post_code:
+            Dansk postnummer med fire cifre.
+
+        city:
+            By eller postdistrikt.
+
+        floor:
+            Valgfri etage, eksempelvis "1", "ST" eller "KL".
+
+        door:
+            Valgfri sidedør, eksempelvis "tv", "th" eller "3".
+
+        file_format:
+            Filformatet. SF1601 fysisk post bruger PDF.
+
+        country_code:
+            ISO 3166-1 alpha-2-landekode. Standard er DK.
+
+        afsendelse_identifikator:
+            Valgfrit unikt ID til forsendelsen. Hvis værdien udelades,
+            oprettes et nyt UUID.
+
+    Output:
+        Et ForsendelseI-objekt med:
+            - unikt afsendelses-ID
+            - forsendelsestype-ID
+            - struktureret modtageradresse
+            - dummy-CPR 0000000000
+            - base64-kodet PDF
+            - TransaktionsParametreI
+            - DokumentParametre
+
+        Objektet er klar til at blive sendt med
+        digital_post.send_physical_mail().
+    """
+    if isinstance(forsendelse_type_identifikator, bool):
+        raise TypeError(
+            "forsendelse_type_identifikator må ikke være bool."
+        )
+
+    if not isinstance(forsendelse_type_identifikator, int):
+        raise TypeError(
+            "forsendelse_type_identifikator skal være et helt tal."
+        )
+
+    if forsendelse_type_identifikator <= 0:
+        raise ValueError(
+            "forsendelse_type_identifikator skal være større end 0."
+        )
+
+    if not isinstance(file_content, bytes):
+        raise TypeError(
+            "file_content skal være bytes."
+        )
+
+    if not file_content:
+        raise ValueError(
+            "file_content må ikke være tom."
+        )
+
+    if not file_content.startswith(b"%PDF-"):
+        raise ValueError(
+            "file_content er ikke genkendt som en PDF."
+        )
+
+    def require_text(
+        value: str,
+        field_name: str,
+    ) -> str:
+        """
+        Validerer og renser et obligatorisk tekstfelt.
+
+        Output:
+            Teksten uden mellemrum før og efter.
+        """
+        if not isinstance(value, str):
+            raise TypeError(
+                f"{field_name} skal være tekst."
+            )
+
+        cleaned_value = value.strip()
+
+        if not cleaned_value:
+            raise ValueError(
+                f"{field_name} må ikke være tom."
+            )
+
+        return cleaned_value
+
+    validated_recipient_name = require_text(
+        recipient_name,
+        "recipient_name",
+    )
+
+    validated_street_name = require_text(
+        street_name,
+        "street_name",
+    )
+
+    validated_house_number = require_text(
+        house_number,
+        "house_number",
+    ).upper()
+
+    validated_post_code = require_text(
+        post_code,
+        "post_code",
+    )
+
+    validated_city = require_text(
+        city,
+        "city",
+    )
+
+    validated_country_code = require_text(
+        country_code,
+        "country_code",
+    ).upper()
+
+    validated_file_format = require_text(
+        file_format,
+        "file_format",
+    ).lower()
+
+    if validated_file_format != "pdf":
+        raise ValueError(
+            "file_format skal være pdf ved fysisk post."
+        )
+
+    if (
+        len(validated_post_code) != 4
+        or not validated_post_code.isdigit()
+    ):
+        raise ValueError(
+            "post_code skal indeholde præcis fire cifre."
+        )
+
+    if len(validated_country_code) != 2:
+        raise ValueError(
+            "country_code skal være en ISO-landekode på to tegn."
+        )
+
+    cleaned_floor: str | None = None
+
+    if floor is not None:
+        cleaned_floor = require_text(
+            floor,
+            "floor",
+        )
+
+    cleaned_door: str | None = None
+
+    if door is not None:
+        cleaned_door = require_text(
+            door,
+            "door",
+        )
+
+    if afsendelse_identifikator is None:
+        validated_shipment_id = str(uuid.uuid4())
+    else:
+        validated_shipment_id = require_text(
+            afsendelse_identifikator,
+            "afsendelse_identifikator",
+        )
+
+        try:
+            validated_shipment_id = str(
+                uuid.UUID(validated_shipment_id)
+            )
+        except ValueError as error:
+            raise ValueError(
+                "afsendelse_identifikator skal være et gyldigt UUID."
+            ) from error
+
+    recipient_address = ModtagerAdresse(
+        person_name=PersonName(
+            value=validated_recipient_name
+        ),
+        street_name=StreetName(
+            value=validated_street_name
+        ),
+        street_building_identifier=StreetBuildingIdentifier(
+            value=validated_house_number
+        ),
+        floor_identifier=(
+            FloorIdentifier(value=cleaned_floor)
+            if cleaned_floor is not None
+            else None
+        ),
+        suite_identifier=(
+            SuiteIdentifier(value=cleaned_door)
+            if cleaned_door is not None
+            else None
+        ),
+        post_code_identifier=PostCodeIdentifier(
+            value=validated_post_code
+        ),
+        district_subdivision_identifier=(
+            DistrictSubdivisionIdentifier(
+                value=validated_city
             )
         ),
-        filformat_navn=FilformatNavn(value=file_format),
+        country_identification_code=CountryIdentificationCode(
+            value=validated_country_code,
+            scheme=(
+                CountryIdentificationSchemeType.ISO3166_ALPHA2
+            ),
+        ),
+    )
+
+    return ForsendelseI(
+        afsendelse_identifikator=AfsendelseIdentifikator(
+            value=validated_shipment_id
+        ),
+        forsendelse_type_identifikator=(
+            ForsendelseTypeIdentifikator(
+                value=forsendelse_type_identifikator
+            )
+        ),
+        forsendelse_modtager=ForsendelseModtager(
+            afsendelse_modtager=AfsendelseModtager(
+                cpr_nummer_identifikator=CPRnummerIdentifikator(
+                    value="0000000000"
+                )
+            ),
+            modtager_adresse=recipient_address,
+        ),
+        filformat_navn=FilformatNavn(
+            value=validated_file_format
+        ),
         meddelelse_indhold_data=MeddelelseIndholdData(
-            value=base64.b64encode(file_content).decode()
+            value=base64.b64encode(
+                file_content
+            ).decode("ascii")
         ),
         transaktions_parametre_i=TransaktionsParametreI(),
-        dokument_parametre=DokumentParametre()
+        dokument_parametre=DokumentParametre(),
     )

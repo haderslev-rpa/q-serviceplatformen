@@ -6,6 +6,7 @@ ikke markeres som færdig eller slettes af dette program.
 """
 
 from __future__ import annotations
+import logging
 
 from q_serviceplatformen.configuration import (
     MESSAGE_BROKER_QUEUE_ID,
@@ -33,6 +34,7 @@ def main() -> None:
         eller blive leveret igen.
     """
 
+    logging.basicConfig(level=logging.DEBUG)
     queue_id = MESSAGE_BROKER_QUEUE_ID.strip()
 
     if not queue_id:

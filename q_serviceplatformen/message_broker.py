@@ -30,17 +30,31 @@ class TokenCredentials(ExternalCredentials):
         return self.TYPE, self.token
 
 
-def _setup_pika_params(kombit_access: KombitAccess) -> pika.ConnectionParameters:
-    """Setup parameters used by Pika to connect to the AMQP server.
-
-    Args:
-        kombit_access: The KombitAccess object used to authenticate.
-
-    Returns:
-        A pika.ConnectionsParameters object that can be used to connect.
+def _setup_pika_params(
+    kombit_access: KombitAccess,
+) -> pika.ConnectionParameters:
     """
-    saml_token = kombit_access.get_saml_token("http://entityid.kombit.dk/service/bfo_modtag/2")
-    saml_decoded = base64.b64decode(saml_token)
+    Opretter forbindelsesparametre til Beskedfordeleren.
+
+    Input:
+        kombit_access:
+            Serviceplatform-adgang, som bruges til at hente
+            SAML-token og vælge drift eller test.
+
+    Output:
+        Pika-forbindelsesparametre med TLS, tokenbaseret
+        godkendelse og faste tidsgrænser.
+    """
+
+    entity_id = (
+        "http://entityid.kombit.dk/service/bfo_modtag/2"
+    )
+
+    saml_token = kombit_access.get_saml_token(entity_id)
+    saml_decoded = base64.b64decode(
+        saml_token,
+        validate=True,
+    )
 
     if kombit_access.test:
         host = TEST_HOST
@@ -48,15 +62,28 @@ def _setup_pika_params(kombit_access: KombitAccess) -> pika.ConnectionParameters
         host = PROD_HOST
 
     ssl_context = ssl.create_default_context()
-    ssl_options = pika.SSLOptions(context=ssl_context, server_hostname=host)
-    credentials = TokenCredentials(token=saml_decoded)
+
+    ssl_options = pika.SSLOptions(
+        context=ssl_context,
+        server_hostname=host,
+    )
+
+    credentials = TokenCredentials(
+        token=saml_decoded,
+    )
 
     return pika.ConnectionParameters(
         host=host,
         port=PORT,
         virtual_host=VIRTUAL_HOST,
         ssl_options=ssl_options,
-        credentials=credentials
+        credentials=credentials,
+        connection_attempts=1,
+        retry_delay=0,
+        socket_timeout=15,
+        stack_timeout=20,
+        blocked_connection_timeout=20,
+        heartbeat=60,
     )
 
 

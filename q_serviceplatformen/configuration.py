@@ -1,12 +1,29 @@
 """
 Fælles konfiguration til Serviceplatformen.
 
-Filen indeholder ikke certifikatets adgangskode eller andre
-hemmeligheder. Selve certifikatfilen skal ligge i den angivne mappe
-både lokalt og på Automation Server.
+Almindelige, ikke-følsomme standardværdier findes direkte i filen.
+
+Miljøbestemte ID'er hentes fra Automation Server Credentials:
+    - physical_post_shipment_type_id
+    - message_broker_queue_id
+
+Credential-navn:
+    SERVICEPLATFORMEN
 """
 
 from pathlib import Path
+from typing import Any
+
+from automation_server_client import AutomationServer, Credential
+
+
+# ------------------------------------------------------------
+# AUTOMATION SERVER CREDENTIAL
+# ------------------------------------------------------------
+
+SERVICEPLATFORMEN_CREDENTIAL_NAME = "SERVICEPLATFORMEN"
+
+_credential_data: dict[str, Any] | None = None
 
 
 # ------------------------------------------------------------
@@ -32,7 +49,7 @@ CERTIFICATE_PATH = (
 # Haderslev Kommunes CVR-nummer.
 SENDER_CVR = "29189757"
 
-# Det navn, der skal anvendes som afsender i MeMo.
+# Det navn, der anvendes som afsender i MeMo.
 SENDER_LABEL = "Haderslev Kommune"
 
 
@@ -41,7 +58,7 @@ SENDER_LABEL = "Haderslev Kommune"
 # ------------------------------------------------------------
 
 # True anvender Serviceplatformens eksterne testmiljø.
-# False anvender Serviceplatformens driftsmiljø.
+# False anvender Serviceplatformens produktionsmiljø.
 USE_TEST_ENVIRONMENT = False
 
 
@@ -64,16 +81,125 @@ REQUEST_TIMEOUT_SECONDS = 30
 
 
 # ------------------------------------------------------------
-# BESKEDFORDELER
+# AUTOMATION SERVER
 # ------------------------------------------------------------
 
-# Kø-ID'et udleveres som en del af opsætningen af Beskedfordeleren.
-# Værdien kan være tom, indtil køen er oprettet.
-MESSAGE_BROKER_QUEUE_ID = "d343e45d-8d0b-4a5d-fd43-40f4e3b3a40b"
+def _get_credential_data() -> dict[str, Any]:
+    """
+    Henter Serviceplatform-konfigurationen fra Automation Server.
+
+    Credentialen hentes kun første gang funktionen kaldes. Dataene
+    gemmes derefter i hukommelsen og genbruges.
+
+    Output:
+        En dictionary med data fra credentialen SERVICEPLATFORMEN.
+
+        Forventede felter:
+            physical_post_shipment_type_id
+            message_broker_queue_id
+
+    Fejl:
+        RuntimeError, hvis credentialen ikke indeholder en dictionary.
+        Andre forbindelses- eller credentialfejl fortsætter fra
+        automation_server_client.
+    """
+    global _credential_data
+
+    if _credential_data is not None:
+        return _credential_data
+
+    AutomationServer.from_environment()
+
+    credential = Credential.get_credential(
+        SERVICEPLATFORMEN_CREDENTIAL_NAME
+    )
+
+    if not isinstance(credential.data, dict):
+        raise RuntimeError(
+            "Automation Server-credentialen "
+            f"{SERVICEPLATFORMEN_CREDENTIAL_NAME!r} skal indeholde "
+            "et dataobjekt."
+        )
+
+    _credential_data = credential.data
+
+    return _credential_data
+
+
+def get_physical_post_shipment_type_id() -> int:
+    """
+    Henter ForsendelseTypeIdentifikator til fysisk post.
+
+    Output:
+        Et positivt heltal, eksempelvis 13979.
+
+    Fejl:
+        KeyError, hvis feltet mangler i credentialen.
+        TypeError eller ValueError, hvis værdien er ugyldig.
+    """
+    credential_data = _get_credential_data()
+
+    raw_value = credential_data[
+        "physical_post_shipment_type_id"
+    ]
+
+    if isinstance(raw_value, bool):
+        raise TypeError(
+            "physical_post_shipment_type_id må ikke være "
+            "True eller False."
+        )
+
+    try:
+        shipment_type_id = int(raw_value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "physical_post_shipment_type_id skal være "
+            "et positivt heltal."
+        ) from error
+
+    if shipment_type_id <= 0:
+        raise ValueError(
+            "physical_post_shipment_type_id skal være "
+            "større end 0."
+        )
+
+    return shipment_type_id
+
+
+def get_message_broker_queue_id() -> str:
+    """
+    Henter UUID'et på Dueslaget i Beskedfordeleren.
+
+    Output:
+        Dueslagets UUID som tekst.
+
+    Fejl:
+        KeyError, hvis feltet mangler i credentialen.
+        TypeError eller ValueError, hvis værdien er ugyldig.
+    """
+    credential_data = _get_credential_data()
+
+    raw_value = credential_data[
+        "message_broker_queue_id"
+    ]
+
+    if not isinstance(raw_value, str):
+        raise TypeError(
+            "message_broker_queue_id skal være tekst."
+        )
+
+    queue_id = raw_value.strip()
+
+    if not queue_id:
+        raise ValueError(
+            "message_broker_queue_id må ikke være tom."
+        )
+
+    return queue_id
 
 
 # ------------------------------------------------------------
-# VALIDERING
+# CERTIFIKATVALIDERING
 # ------------------------------------------------------------
 
 def get_certificate_path() -> str:
@@ -87,7 +213,6 @@ def get_certificate_path() -> str:
         FileNotFoundError, hvis certifikatmappen eller
         certifikatfilen ikke findes.
     """
-
     if not CERTIFICATE_DIRECTORY.is_dir():
         raise FileNotFoundError(
             "Certifikatmappen blev ikke fundet: "
@@ -107,13 +232,16 @@ def validate_configuration() -> None:
     """
     Kontrollerer den grundlæggende Serviceplatform-konfiguration.
 
+    Funktionen henter ikke fysisk post-ID eller Dueslag-ID.
+    De valideres først, når deres respektive funktioner kaldes.
+
     Output:
         None, når konfigurationen er gyldig.
 
     Fejl:
-        ValueError eller FileNotFoundError ved manglende opsætning.
+        ValueError, TypeError eller FileNotFoundError ved
+        ugyldig opsætning.
     """
-
     get_certificate_path()
 
     normalized_cvr = "".join(
