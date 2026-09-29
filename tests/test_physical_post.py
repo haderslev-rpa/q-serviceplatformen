@@ -7,9 +7,11 @@ from xml.dom import minidom
 
 from dotenv import load_dotenv
 
-from q_serviceplatformen import (
+from q_serviceplatformen.functionality.post_models import (
     PhysicalPostSendResult,
     PostDocument,
+)
+from q_serviceplatformen.functionality.send_physical_post import (
     preview_physical_post_xml,
     send_physical_post,
 )

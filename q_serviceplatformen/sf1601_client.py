@@ -17,7 +17,7 @@ from xsdata.formats.dataclass.serializers.config import SerializerConfig
 from q_serviceplatformen.authentication import KombitAccess
 from q_serviceplatformen.configuration import REQUEST_TIMEOUT_SECONDS
 from q_serviceplatformen.date_helper import format_datetime
-from q_serviceplatformen.models import xml_util
+import q_serviceplatformen.models.xml_util as xml_util
 from q_serviceplatformen.models.message import Message
 from q_serviceplatformen.models.physical_mail import (
     ForsendelseI,

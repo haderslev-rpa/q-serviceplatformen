@@ -4,7 +4,9 @@ import os
 
 from dotenv import load_dotenv
 
-from q_serviceplatformen import check_registration
+from q_serviceplatformen.functionality.registration import (
+    check_registration,
+)
 
 load_dotenv(override=True)
 
