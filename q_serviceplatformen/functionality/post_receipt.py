@@ -8,77 +8,195 @@ from xml.etree import ElementTree
 from q_serviceplatformen.functionality.post_models import DigitalPostReceipt
 
 
-def parse_post_receipt(raw_xml: bytes) -> DigitalPostReceipt:
-    """Fortolk en Haendelsesbesked og returnér en DigitalPostReceipt.
+def parse_post_receipt(
+    raw_xml: bytes,
+) -> DigitalPostReceipt:
+    """
+    Fortolk én Haendelsesbesked fra KOMBIT Beskedfordeleren.
+
+    Input:
+        raw_xml:
+            Hele AMQP-beskedens XML som bytes.
+
+    Behandling:
+        1. Parser den ydre Beskedfordeler-kuvert.
+        2. Finder metadata som BeskedId og RelateretObjekt.
+        3. Base64-dekoder Beskeddata.
+        4. Parser den indlejrede PKO_PostStatus.
+        5. Normaliserer status og kanal.
+        6. Returnerer en DigitalPostReceipt.
 
     Output:
-        En normaliseret kvittering. Den ydre Beskedfordeler-kuvert og den
-        base64-kodede PKO_PostStatus læses begge.
+        En DigitalPostReceipt med både:
+
+        - kuvertmetadata
+        - Digital Post-identifikatorer
+        - fysisk post-identifikator
+        - statusoplysninger
+        - RelateretObjekt-ID
+
+    Vigtigt:
+        Funktionen sender ikke ack eller nack. Funktionen fortolker
+        kun beskedens indhold.
     """
     if not isinstance(raw_xml, bytes):
-        raise TypeError("raw_xml skal være bytes.")
+        raise TypeError(
+            "raw_xml skal være bytes."
+        )
+
     if not raw_xml:
-        raise ValueError("raw_xml må ikke være tom.")
+        raise ValueError(
+            "raw_xml må ikke være tom."
+        )
 
     try:
-        envelope = ElementTree.fromstring(raw_xml)
+        envelope = ElementTree.fromstring(
+            raw_xml
+        )
     except ElementTree.ParseError as error:
-        raise ValueError("Brokerbeskeden er ikke gyldig XML.") from error
+        raise ValueError(
+            "Brokerbeskeden er ikke gyldig XML."
+        ) from error
 
-    broker_message_id = _first_text_below(envelope, "BeskedId", "UUIDIdentifikator")
-    subscription_expression_id = _first_text_below(
-        envelope, "ErLeveretIHenholdTil", "UUIDIdentifikator"
+    broker_message_id = _first_text_below(
+        envelope,
+        "BeskedId",
+        "UUIDIdentifikator",
     )
+
+    subscription_expression_id = _first_text_below(
+        envelope,
+        "ErLeveretIHenholdTil",
+        "UUIDIdentifikator",
+    )
+
+    related_object_id = _first_text_below(
+        envelope,
+        "RelateretObjekt",
+        "UUIDIdentifikator",
+    )
+
     received_at = _parse_datetime(
-        _first_text_below(envelope, "LeveranceTidspunkt", "TidsstempelDatoTid")
-        or _first_text_below(envelope, "Dannelsestidspunkt", "TidsstempelDatoTid")
+        _first_text_below(
+            envelope,
+            "LeveranceTidspunkt",
+            "TidsstempelDatoTid",
+        )
+        or _first_text_below(
+            envelope,
+            "Dannelsestidspunkt",
+            "TidsstempelDatoTid",
+        )
     )
 
     base64_element = next(
-        (element for element in envelope.iter() if _local_name(element.tag) == "Base64"),
+        (
+            element
+            for element in envelope.iter()
+            if _local_name(element.tag) == "Base64"
+        ),
         None,
     )
-    if base64_element is None or not (base64_element.text or "").strip():
-        raise ValueError("Brokerbeskeden mangler Beskeddata/Base64.")
+
+    if (
+        base64_element is None
+        or not (base64_element.text or "").strip()
+    ):
+        raise ValueError(
+            "Brokerbeskeden mangler Beskeddata/Base64."
+        )
 
     try:
-        payload_bytes = base64.b64decode(base64_element.text.strip(), validate=True)
+        payload_bytes = base64.b64decode(
+            base64_element.text.strip(),
+            validate=True,
+        )
     except (ValueError, TypeError) as error:
-        raise ValueError("Beskeddata/Base64 er ikke gyldig base64.") from error
+        raise ValueError(
+            "Beskeddata/Base64 er ikke gyldig base64."
+        ) from error
 
     try:
-        payload = ElementTree.fromstring(payload_bytes)
+        payload = ElementTree.fromstring(
+            payload_bytes
+        )
     except ElementTree.ParseError as error:
-        raise ValueError("Den indlejrede kvittering er ikke gyldig XML.") from error
+        raise ValueError(
+            "Den indlejrede kvittering er ikke gyldig XML."
+        ) from error
 
     values = {
         _local_name(element.tag): element.text.strip()
         for element in payload.iter()
         if element.text and element.text.strip()
     }
-    status_code = values.get("TransaktionsStatusKode")
-    error_code, error_message = _read_error_details(payload)
-    status = _normalize_status(status_code, error_code)
-    channel = _normalize_channel(values.get("KanalKode"))
-    transaction_time = _parse_datetime(values.get("TransaktionsDatoTid"))
+
+    status_code = values.get(
+        "TransaktionsStatusKode"
+    )
+
+    error_code, error_message = (
+        _read_error_details(payload)
+    )
+
+    status = _normalize_status(
+        status_code,
+        error_code,
+    )
+
+    channel = _normalize_channel(
+        values.get("KanalKode")
+    )
+
+    transaction_time = _parse_datetime(
+        values.get("TransaktionsDatoTid")
+    )
 
     return DigitalPostReceipt(
         status=status,
-        is_final=status in {"DELIVERED", "FAILED", "REJECTED"},
+        is_final=status in {
+            "DELIVERED",
+            "FAILED",
+            "REJECTED",
+        },
         is_success=status == "DELIVERED",
-        received_at=received_at or transaction_time or datetime.now(timezone.utc),
-        serviceplatform_transaction_id=values.get("TransmissionId"),
-        memo_message_uuid=values.get("MessageUUID"),
-        digital_post_id=values.get("MessageUUID"),
-        physical_shipment_id=values.get("AfsendelseIdentifikator"),
-        correlation_id=values.get("CorrelationId"),
+        received_at=(
+            received_at
+            or transaction_time
+            or datetime.now(timezone.utc)
+        ),
+        serviceplatform_transaction_id=(
+            values.get("TransmissionId")
+        ),
+        memo_message_uuid=(
+            values.get("MessageUUID")
+        ),
+        digital_post_id=(
+            values.get("MessageId")
+        ),
+        physical_shipment_id=(
+            values.get("AfsendelseIdentifikator")
+        ),
+        related_object_id=related_object_id,
+        correlation_id=(
+            values.get("CorrelationId")
+        ),
         channel=channel,
-        actual_delivery=transaction_time if status == "DELIVERED" else None,
+        actual_delivery=(
+            transaction_time
+            if status == "DELIVERED"
+            else None
+        ),
         status_code=status_code,
-        status_message=error_message or status_code,
+        status_message=(
+            error_message
+            or status_code
+        ),
         error_code=error_code,
         broker_message_id=broker_message_id,
-        subscription_expression_id=subscription_expression_id,
+        subscription_expression_id=(
+            subscription_expression_id
+        ),
     )
 
 

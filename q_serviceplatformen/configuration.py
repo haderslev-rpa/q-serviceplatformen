@@ -13,9 +13,12 @@ Credential-navn:
 
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
-from automation_server_client import AutomationServer, Credential
-
+from automation_server_client import (
+    AutomationServer,
+    Credential,
+)
 
 # ------------------------------------------------------------
 # AUTOMATION SERVER CREDENTIAL
@@ -86,21 +89,34 @@ REQUEST_TIMEOUT_SECONDS = 30
 
 def _get_credential_data() -> dict[str, Any]:
     """
-    Henter Serviceplatform-konfigurationen fra Automation Server.
+    Hent Serviceplatform-konfigurationen fra Automation Server.
 
-    Credentialen hentes kun første gang funktionen kaldes. Dataene
-    gemmes derefter i hukommelsen og genbruges.
+    Credential:
+        SERVICEPLATFORMEN
+
+    Forventede Data JSON-felter:
+        message_broker_queue_id:
+            UUID'et på Dueslaget i Beskedfordeleren.
+
+        physical_post_shipment_type_id:
+            ForsendelseTypeIdentifikator til fysisk post.
+
+        related_object_id:
+            RelateretObjekt/ObjektId for kvitteringer, som
+            tilhører dette anvendersystem.
 
     Output:
-        En dictionary med data fra credentialen SERVICEPLATFORMEN.
+        En dictionary med credentialens Data JSON.
 
-        Forventede felter:
-            physical_post_shipment_type_id
-            message_broker_queue_id
+    Cache:
+        Credentialen hentes kun første gang under den aktuelle
+        proceskørsel. Efterfølgende kald genbruger dictionaryen.
 
     Fejl:
-        RuntimeError, hvis credentialen ikke indeholder en dictionary.
-        Andre forbindelses- eller credentialfejl fortsætter fra
+        RuntimeError:
+            Hvis credentialens data ikke er en dictionary.
+
+        Andre credential- og forbindelsesfejl fortsætter fra
         automation_server_client.
     """
     global _credential_data
@@ -117,8 +133,8 @@ def _get_credential_data() -> dict[str, Any]:
     if not isinstance(credential.data, dict):
         raise RuntimeError(
             "Automation Server-credentialen "
-            f"{SERVICEPLATFORMEN_CREDENTIAL_NAME!r} skal indeholde "
-            "et dataobjekt."
+            f"{SERVICEPLATFORMEN_CREDENTIAL_NAME!r} skal "
+            "indeholde et Data JSON-objekt."
         )
 
     _credential_data = credential.data
@@ -197,6 +213,70 @@ def get_message_broker_queue_id() -> str:
 
     return queue_id
 
+def get_related_object_id() -> str:
+    """
+    Hent dette systems RelateretObjekt/ObjektId.
+
+    Værdien læses fra Automation Server-credentialen:
+
+        SERVICEPLATFORMEN
+
+    Forventet Data JSON-felt:
+
+        related_object_id
+
+    Output:
+        UUID'et som normaliseret tekst med små bogstaver.
+
+        Eksempel:
+
+            c84a1860-fff5-43fd-924c-708ffa21ec60
+
+    Anvendelse:
+        Når en Beskedfordeler-kvittering ikke kan matches med et
+        ATS-item, kan værdien sammenlignes med:
+
+            receipt.related_object_id
+
+        Hvis værdierne er ens, tilhører kvitteringen dette system
+        og skal rapporteres til manuel undersøgelse.
+
+    Fejl:
+        KeyError:
+            Hvis `related_object_id` mangler i credentialens Data JSON.
+
+        TypeError:
+            Hvis værdien ikke er tekst.
+
+        ValueError:
+            Hvis værdien er tom eller ikke er et gyldigt UUID.
+    """
+    credential_data = _get_credential_data()
+
+    raw_value = credential_data[
+        "related_object_id"
+    ]
+
+    if not isinstance(raw_value, str):
+        raise TypeError(
+            "related_object_id skal være tekst."
+        )
+
+    cleaned_value = raw_value.strip()
+
+    if not cleaned_value:
+        raise ValueError(
+            "related_object_id må ikke være tom."
+        )
+
+    try:
+        return str(
+            UUID(cleaned_value)
+        )
+    except ValueError as error:
+        raise ValueError(
+            "related_object_id skal være et gyldigt UUID."
+        ) from error
 
 # ------------------------------------------------------------
 # CERTIFIKATVALIDERING
