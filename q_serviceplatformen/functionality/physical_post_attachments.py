@@ -1,7 +1,6 @@
 """Builder og validering af indlejrede PDF-bilag til SF1601 Fjernprint."""
 from __future__ import annotations
 
-import base64
 from collections.abc import Sequence
 
 from q_serviceplatformen.functionality.post_models import PostDocument
@@ -79,7 +78,7 @@ def build_physical_post_attachment_collection(
                     BilagSorteringsIndeksIdentifikator(value=index)
                 ),
                 vedhaeftning_indhold_data=VedhaeftningIndholdData(
-                    value=base64.b64encode(attachment.content)
+                    value=attachment.content
                 ),
             )
         )
