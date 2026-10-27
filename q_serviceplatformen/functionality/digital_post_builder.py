@@ -21,11 +21,13 @@ from q_serviceplatformen.functionality.digital_post_models import (
 )
 from q_serviceplatformen.models.message import (
     AdditionalDocument,
+    AttentionData,
     File,
     MainDocument,
     Message,
     MessageBody,
     MessageHeader,
+    ProductionUnit,
     Recipient,
     Sender,
 )
@@ -41,9 +43,15 @@ def build_digital_post_message(
     subject: str,
     main_document: DigitalPostDocument,
     attachments: list[DigitalPostDocument] | None = None,
+    p_number: str | None = None,
+    production_unit_name: str | None = None,
 ) -> Message:
     """
     Bygger en komplet MeMo-besked til Digital Post.
+
+    P-nummeret angives som modtagerens ProductionUnit.
+    Modtagerens egentlige ID er fortsat CPR eller CVR.
+        Bygger en komplet MeMo-besked til Digital Post.
 
     Input:
         recipient_id:
@@ -73,7 +81,6 @@ def build_digital_post_message(
 
         Funktionen sender ikke beskeden til Serviceplatformen.
     """
-
     validated_recipient_id = _validate_recipient(
         recipient_id=recipient_id,
         recipient_id_type=recipient_id_type,
@@ -86,16 +93,42 @@ def build_digital_post_message(
         main_document,
         "main_document",
     )
-
     validated_attachments = _validate_attachments(
         attachments or [],
         main_document=validated_main_document,
     )
 
+    validated_p_number = _validate_p_number(
+        p_number=p_number,
+        recipient_id_type=recipient_id_type,
+    )
+
+    validated_production_unit_name = (
+        str(production_unit_name or "").strip()
+    )
+
+    if (
+        validated_production_unit_name
+        and validated_p_number is None
+    ):
+        raise ValueError(
+            "production_unit_name må kun angives sammen med p_number."
+        )
+
+    attention_data = None
+    if validated_p_number is not None:
+        attention_data = (
+            AttentionData(
+                productionUnit=ProductionUnit(
+                    productionUnitNumber=validated_p_number,
+                    productionUnitName=validated_production_unit_name,
+                )
+            ),
+        )
+
     main_memo_document = _build_main_document(
         validated_main_document
     )
-
     additional_memo_documents = tuple(
         _build_additional_document(document)
         for document in validated_attachments
@@ -117,6 +150,7 @@ def build_digital_post_message(
             recipient=Recipient(
                 recipientID=validated_recipient_id,
                 idType=recipient_id_type,
+                attentionData=attention_data,
             ),
         ),
         messageBody=MessageBody(
@@ -345,6 +379,41 @@ def _validate_recipient(
 
     return normalized_id
 
+def _validate_p_number(
+    *,
+    p_number: str | None,
+    recipient_id_type: RecipientIdType,
+) -> str | None:
+    """
+    Validerer et valgfrit P-nummer.
+
+    Output:
+        Et P-nummer med præcis 10 cifre eller None.
+    """
+    if p_number is None:
+        return None
+
+    if not isinstance(p_number, str):
+        raise TypeError("p_number skal være tekst eller None.")
+
+    normalized_p_number = "".join(
+        character
+        for character in p_number
+        if character.isdigit()
+    )
+
+    if len(normalized_p_number) != 10:
+        raise ValueError(
+            "p_number skal indeholde præcis 10 cifre."
+        )
+
+    if recipient_id_type != "CVR":
+        raise ValueError(
+            "p_number må kun anvendes, når modtageren "
+            "identificeres med CVR."
+        )
+
+    return normalized_p_number
 
 def _require_text(
     value: str,

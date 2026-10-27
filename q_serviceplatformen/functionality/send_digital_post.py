@@ -25,6 +25,7 @@ from q_serviceplatformen.sf1601_client import (
 )
 
 
+
 def send_digital_post(
     *,
     recipient_id: str,
@@ -32,6 +33,8 @@ def send_digital_post(
     subject: str,
     main_document: PostDocument,
     attachments: list[PostDocument] | None = None,
+    p_number: str | None = None,
+    production_unit_name: str | None = None,
     kombit_access: KombitAccess | None = None,
     check_registration: bool = True,
 ) -> DigitalPostSendResult:
@@ -71,6 +74,10 @@ def send_digital_post(
 
             Standardværdien er True.
 
+
+    CVR er modtagerens egentlige ID. Et valgfrit P-nummer
+    medtages som modtagerens ProductionUnit.
+            
     Output:
         Et DigitalPostSendResult med:
 
@@ -95,6 +102,7 @@ def send_digital_post(
         Serviceplatformen har accepteret indsendelsen.
 
         Det betyder ikke, at beskeden er endeligt leveret.
+
     """
     if not isinstance(check_registration, bool):
         raise TypeError(
@@ -129,6 +137,8 @@ def send_digital_post(
         subject=subject,
         main_document=main_document,
         attachments=attachments,
+        p_number=p_number,
+        production_unit_name=production_unit_name,
     )
 
     response = send_message(
@@ -138,11 +148,10 @@ def send_digital_post(
     )
 
     return DigitalPostSendResult(
-        serviceplatform_transaction_id=(
-            response.transaction_id
-        ),
+        serviceplatform_transaction_id=response.transaction_id,
         memo_message_uuid=(
             memo_message.messageHeader.messageUUID
         ),
         submitted_at=datetime.now(timezone.utc),
     )
+
